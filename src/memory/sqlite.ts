@@ -39,18 +39,32 @@ db.exec(`
   END;
 `);
 
-export function addMessage(role: 'user' | 'assistant' | 'system' | 'tool', content: string) {
-  const stmt = db.prepare('INSERT INTO messages (role, content) VALUES (?, ?)');
-  stmt.run(role, content);
+// Safely add new columns for tool calls if they don't exist
+try { db.exec('ALTER TABLE messages ADD COLUMN tool_calls TEXT;'); } catch (e) {}
+try { db.exec('ALTER TABLE messages ADD COLUMN tool_call_id TEXT;'); } catch (e) {}
+
+export function addMessage(
+  role: 'user' | 'assistant' | 'system' | 'tool',
+  content: string | null,
+  tool_calls?: string,
+  tool_call_id?: string
+) {
+  const stmt = db.prepare('INSERT INTO messages (role, content, tool_calls, tool_call_id) VALUES (?, ?, ?, ?)');
+  stmt.run(role, content || '', tool_calls || null, tool_call_id || null);
 }
 
-export function getRecentMessages(limit: number = 20): { role: string, content: string }[] {
-  const stmt = db.prepare('SELECT role, content FROM messages ORDER BY id DESC LIMIT ?');
-  const rows = stmt.all(limit) as { role: string, content: string }[];
-  return rows.reverse(); // Return in chronological order
+export function getRecentMessages(limit: number = 20): any[] {
+  const stmt = db.prepare('SELECT role, content, tool_calls, tool_call_id FROM messages ORDER BY id DESC LIMIT ?');
+  const rows = stmt.all(limit) as any[];
+  return rows.reverse().map(row => {
+    const msg: any = { role: row.role, content: row.content };
+    if (row.tool_calls) msg.tool_calls = JSON.parse(row.tool_calls);
+    if (row.tool_call_id) msg.tool_call_id = row.tool_call_id;
+    return msg;
+  });
 }
 
-export function searchMessages(query: string, limit: number = 5): { role: string, content: string, timestamp: string }[] {
+export function searchMessages(query: string, limit: number = 5): any[] {
   const stmt = db.prepare(`
     SELECT m.role, m.content, m.timestamp
     FROM messages_fts f
@@ -59,5 +73,5 @@ export function searchMessages(query: string, limit: number = 5): { role: string
     ORDER BY rank
     LIMIT ?
   `);
-  return stmt.all(query, limit) as { role: string, content: string, timestamp: string }[];
+  return stmt.all(query, limit);
 }

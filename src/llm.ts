@@ -26,7 +26,12 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
 ];
 
 function getCurrentTime() {
-  return new Date().toISOString();
+  const tz = process.env.TIMEZONE || 'America/Edmonton';
+  return new Date().toLocaleString('en-US', { 
+    timeZone: tz,
+    dateStyle: 'full', 
+    timeStyle: 'long' 
+  });
 }
 
 export async function generateResponse(userMessage: string): Promise<string> {
@@ -40,7 +45,7 @@ export async function generateResponse(userMessage: string): Promise<string> {
     : '';
 
   // 3. Build message history
-  const systemPrompt = `You are Gravity Claw, a personal AI agent. You have access to tools. Use them if necessary.${memoryContext}`;
+  const systemPrompt = `You are Gravity Claw, a personal AI agent. You have access to tools. Use them if necessary. If the user explicitly asks for a voice recording, voice message, or TTS, you MUST prefix your response with exactly "[VOICE]". Otherwise, just reply normally.${memoryContext}`;
   
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt }
