@@ -1,7 +1,6 @@
 import { Bot, InputFile } from 'grammy';
 import { generateResponse } from './llm.js';
 import { transcribeAudio } from './voice/transcribe.js';
-import { generateSpeech } from './voice/speak.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -43,20 +42,7 @@ export async function startBot() {
     await ctx.replyWithChatAction('typing');
 
     try {
-      let response = await generateResponse(userMessage);
-      
-      let useVoice = false;
-      if (response.startsWith('[VOICE]')) {
-        useVoice = true;
-        response = response.replace('[VOICE]', '').trim();
-      }
-
-      if (useVoice) {
-        await ctx.replyWithChatAction('record_voice');
-        const audioBuffer = await generateSpeech(response);
-        await ctx.replyWithVoice(new InputFile(audioBuffer, 'response.ogg'));
-      }
-      
+      const response = await generateResponse(userMessage);
       await ctx.reply(response);
     } catch (error) {
       console.error('Error generating response:', error);
@@ -88,22 +74,7 @@ export async function startBot() {
       
       // Generate Response
       await ctx.replyWithChatAction('typing');
-      let replyText = await generateResponse(text);
-      
-      let useVoice = false;
-      if (replyText.startsWith('[VOICE]')) {
-        useVoice = true;
-        replyText = replyText.replace('[VOICE]', '').trim();
-      }
-      
-      if (useVoice) {
-        // Generate TTS
-        await ctx.replyWithChatAction('record_voice');
-        const audioBuffer = await generateSpeech(replyText);
-        
-        // Send back
-        await ctx.replyWithVoice(new InputFile(audioBuffer, 'response.ogg'));
-      }
+      const replyText = await generateResponse(text);
       
       await ctx.reply(replyText);
       
