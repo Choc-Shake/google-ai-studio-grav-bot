@@ -32,7 +32,7 @@ export async function startBot() {
   });
 
   bot.command('start', (ctx) => {
-    ctx.reply('Gravity Claw initialized. Awaiting input.');
+    ctx.reply('IRIS initialized. Awaiting input.');
   });
 
   bot.on('message:text', async (ctx) => {
@@ -84,6 +84,6 @@ export async function startBot() {
     }
   });
 
-  console.log('Starting Gravity Claw (Long Polling)...');
+  console.log('Starting IRIS (Long Polling)...');
   await bot.start();
 }

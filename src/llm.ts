@@ -45,7 +45,7 @@ export async function generateResponse(userMessage: string): Promise<string> {
     : '';
 
   // 3. Build message history
-  const systemPrompt = `You are Gravity Claw, a personal AI agent. You have access to tools. Use them if necessary.${memoryContext}`;
+  const systemPrompt = `You are IRIS (Intelligent Response and Insight System), a personal AI agent. You have access to tools. Use them if necessary.${memoryContext}`;
   
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt }
@@ -103,7 +103,7 @@ export async function generateResponse(userMessage: string): Promise<string> {
       addMessage('assistant', finalContent);
       
       // Async save to semantic memory (Pinecone) - don't block the response
-      upsertSemanticMemory(`User: ${userMessage}\nGravity Claw: ${finalContent}`).catch(console.error);
+      upsertSemanticMemory(`User: ${userMessage}\nIRIS: ${finalContent}`).catch(console.error);
 
       return finalContent;
     }

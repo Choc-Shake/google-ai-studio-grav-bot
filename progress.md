@@ -1,4 +1,4 @@
-# Gravity Claw - Progress Report
+# IRIS - Progress Report
 
 ## Successfully Built (Levels 1 - 3)
 
@@ -24,4 +24,4 @@
 - **Goal:** Implement a local Model Context Protocol (MCP) client.
 - **Dependencies:** Use `@modelcontextprotocol/sdk`.
 - **Configuration:** Implement dynamic tool loading via an `mcp-servers.json` configuration file.
-- **Objective:** Allow Gravity Claw to seamlessly interface with external MCP servers to expand its toolset without hardcoding new tools into the core logic.
+- **Objective:** Allow IRIS to seamlessly interface with external MCP servers to expand its toolset without hardcoding new tools into the core logic.

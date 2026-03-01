@@ -1,7 +1,7 @@
-# Gravity Claw - Project Constitution
+# IRIS - Project Constitution
 
 ## Overview
-Gravity Claw is a personal AI agent running on Telegram, built with local-first principles. This document serves as the core architectural and security guideline for any AI agent working on this codebase.
+IRIS (Intelligent Response and Insight System) is a personal AI agent running on Telegram, built with local-first principles. This document serves as the core architectural and security guideline for any AI agent working on this codebase.
 
 ## Core Architecture
 - **Language:** TypeScript (Node.js)

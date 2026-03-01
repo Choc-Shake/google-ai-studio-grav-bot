@@ -1,5 +1,5 @@
 {
-  "name": "Gravity Claw",
-  "description": "A personal AI agent inspired by OpenClaw, running on Telegram with local-first principles.",
+  "name": "IRIS",
+  "description": "Intelligent Response and Insight System, a personal AI agent running on Telegram with local-first principles.",
   "requestFramePermissions": []
 }
