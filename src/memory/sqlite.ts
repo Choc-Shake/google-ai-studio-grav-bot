@@ -9,39 +9,59 @@ if (!fs.existsSync(dbDir)) {
 }
 
 // Initialize SQLite Database
-const db = new Database(path.join(dbDir, 'memory.db'));
+const dbPath = path.join(dbDir, 'memory.db');
+let db: any;
 
-// Initialize tables and FTS5 virtual table
-db.exec(`
-  CREATE TABLE IF NOT EXISTS messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    role TEXT NOT NULL,
-    content TEXT NOT NULL,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+function initDb() {
+  db = new Database(dbPath);
 
-  CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
-    content,
-    content='messages',
-    content_rowid='id'
-  );
+  // Initialize tables and FTS5 virtual table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
 
-  -- Triggers to keep FTS updated
-  CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
-    INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
-  END;
-  CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
-    INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
-  END;
-  CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
-    INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
-    INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
-  END;
-`);
+    CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+      content,
+      content='messages',
+      content_rowid='id'
+    );
 
-// Safely add new columns for tool calls if they don't exist
-try { db.exec('ALTER TABLE messages ADD COLUMN tool_calls TEXT;'); } catch (e) {}
-try { db.exec('ALTER TABLE messages ADD COLUMN tool_call_id TEXT;'); } catch (e) {}
+    -- Triggers to keep FTS updated
+    CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+      INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
+    END;
+    CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+      INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
+    END;
+    CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+      INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
+      INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
+    END;
+  `);
+
+  // Safely add new columns for tool calls if they don't exist
+  try { db.exec('ALTER TABLE messages ADD COLUMN tool_calls TEXT;'); } catch (e) {}
+  try { db.exec('ALTER TABLE messages ADD COLUMN tool_call_id TEXT;'); } catch (e) {}
+}
+
+try {
+  initDb();
+} catch (error: any) {
+  if (error.code === 'SQLITE_CORRUPT' || error.message.includes('malformed')) {
+    console.warn('Database is corrupted. Deleting and recreating...');
+    if (db) {
+      try { db.close(); } catch (e) {}
+    }
+    fs.unlinkSync(dbPath);
+    initDb();
+  } else {
+    throw error;
+  }
+}
 
 export function addMessage(
   role: 'user' | 'assistant' | 'system' | 'tool',
