@@ -4,18 +4,16 @@ import OpenAI from 'openai';
 const pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY || '' });
 const indexName = 'iris';
 
-// We use OpenRouter for embeddings too, or fallback to a free provider if needed.
-// OpenRouter supports text-embedding-3-small via OpenAI routing.
+// We use Ollama for embeddings too
 const openai = new OpenAI({
-  baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: process.env.OPENROUTER_API_KEY,
+  baseURL: process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
+  apiKey: 'ollama',
 });
 
 async function getEmbedding(text: string): Promise<number[]> {
   const response = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
+    model: process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text',
     input: text,
-    dimensions: 1024,
   });
   return response.data[0].embedding;
 }
