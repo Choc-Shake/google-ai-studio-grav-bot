@@ -1,0 +1,42 @@
+# Analysis: MCP Request Failures
+
+I have analyzed the current implementation and logs to identify why IRIS is struggling with MCP requests, particularly for Google Calendar and tool parameter handling.
+
+## Root Causes
+
+### 1. Zapier Configuration (Confirmed Available)
+Programmatic inspection confirms that **47 tools are correctly loaded**, including "google_calendar_find_events" and "gmail_find_email".
+- **Discrepancy**: The agent claimed tools were missing because the model was overwhelmed by the sheer number of tools (47+) or hallucinating due to the context size.
+- **Evidence**: `listTools()` correctly returns all enabled Zapier actions. My inspection script verified this.
+
+### 2. Conversation Memory Failure (The Root Technical Cause)
+The agent loop in [llm.ts](file:///c:/Users/dogki/source/repos/google-ai-studio-grav-bot/src/llm.ts) has a critical flaw for multi-turn tasks.
+- **Problem**: When reloading history, the code **explicitly filters out** `tool` and `assistant` tool-call messages (Lines 68-75).
+- **Effect**: If turn 1 "Loads the server", turn 2 (the actual request) has **no memory** that the server was loaded. The assistant's "train of thought" is severed between every tool call and user response.
+
+### 3. Missing SOPs for "Latest Email"
+The `gmail_find_email` tool documentation says: *"When asked vaguely to return the last, latest, or any email from their inbox, use in:inbox to do the lookup."*
+- **Problem**: The model isn't always following this SOP, leading to "instructions missing" errors when it tries to search without a clear query.
+
+### 3. "No response generated" Error
+This occurs when the LLM returns an empty response and no tool calls.
+- **Cause**: This is likely due to the model (`qwen3:14b`) being overwhelmed by:
+    - A large number of tool definitions (Zapier can have hundreds).
+    - Contradictory instructions (System prompt says "I have calendar", but tool list says "I don't").
+    - Missing `instructions` parameter knowledge in the simplified JSON schema.
+
+### 4. Simplified Schema Issues
+The [simplifySchema](file:///c:/Users/dogki/source/repos/google-ai-studio-grav-bot/src/mcp.ts#9-47) function in [mcp.ts](file:///c:/Users/dogki/source/repos/google-ai-studio-grav-bot/src/mcp.ts) is quite destructive.
+- **Problem**: It deletes `anyOf`, `allOf`, and `oneOf` properties.
+- **Effect**: If a required parameter like `instructions` is nested within one of these blocks, its metadata might be stripped, leading the model to omit it or provide it in the wrong format.
+
+## Proposed Solutions
+
+### Non-Code Fixes (Immediate)
+1.  **Enable Zapier Actions**: Go to the [Zapier MCP Dashboard](https://mcp.zapier.com/) and explicitly enable the "Google Calendar: Find Event" and "Google Calendar: Create Event" actions for your account.
+2.  **Explicit Prompts**: When asking the agent to use a tool, try to include the instructions directly: *"Use Zapier to find my latest email with instructions: 'Look for subject Project Update'"*.
+
+### Technical Recommendations (To be implemented later)
+1.  **Fix Memory Persistence**: Update [llm.ts](file:///c:/Users/dogki/source/repos/google-ai-studio-grav-bot/src/llm.ts) to save and reload `tool` messages and `tool_calls`.
+2.  **Tool Filtering**: Limit the number of tools sent to the LLM to only those relevant to the current request to reduce "confusion" and "No response generated" errors.
+3.  **Refine Schema Logic**: Improve [simplifySchema](file:///c:/Users/dogki/source/repos/google-ai-studio-grav-bot/src/mcp.ts#9-47) to flatten logical blocks instead of just deleting them.

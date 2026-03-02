@@ -58,6 +58,7 @@ CRITICAL RULES FOR TOOLS:
 1. ZAPIER 'instructions' PARAMETER: Every Zapier tool REQUIRES an 'instructions' parameter. You MUST include it. Example: { "instructions": "Find events for tomorrow" }.
 2. CALENDAR ACCESS: You DO have access to Google Calendar via Zapier. Look for tools starting with 'zapier__google_calendar_'.
 3. CONVERSATIONAL RESPONSES: When a tool returns data (like emails or calendar events), read the data and answer the user naturally. DO NOT say "Here is the JSON" or list execution metadata. Act like a human assistant who just looked up the info.
+4. LATEST EMAIL: When asked to find the latest email, use the 'zapier__gmail_find_email' tool with query="in:inbox" and instructions="find the latest email".
 ${memoryContext}`;
   
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -67,9 +68,11 @@ ${memoryContext}`;
   // Load recent history (last 10 messages)
   const history = getRecentMessages(10);
   for (const msg of history) {
-    // Only push user/assistant messages from history to keep context clean
-    if (msg.role === 'user' || msg.role === 'assistant') {
-      messages.push({ role: msg.role, content: msg.content });
+    if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
+      const messageParam: any = { role: msg.role, content: msg.content };
+      if (msg.tool_calls) messageParam.tool_calls = msg.tool_calls;
+      if (msg.tool_call_id) messageParam.tool_call_id = msg.tool_call_id;
+      messages.push(messageParam);
     }
   }
 
@@ -119,6 +122,9 @@ ${memoryContext}`;
 
     // Handle Tool Calls
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+      // Save assistant message with tool calls to SQLite
+      addMessage('assistant', responseMessage.content, JSON.stringify(responseMessage.tool_calls));
+
       for (const toolCall of responseMessage.tool_calls) {
         let toolResult: string;
         
@@ -167,6 +173,9 @@ ${memoryContext}`;
           tool_call_id: toolCall.id,
           content: toolResult
         });
+        
+        // Save tool response to exact memory (SQLite)
+        addMessage('tool', toolResult, undefined, toolCall.id);
       }
     } else {
       // No more tool calls, we have our final response

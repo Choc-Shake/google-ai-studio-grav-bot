@@ -1,0 +1,42 @@
+# Plan: Fixing MCP Memory and Prompt Logic
+
+Programmatic inspection confirmed tools (Calendar, Gmail) are correctly loaded. The failures are caused by **context loss** (technical roles filtered from history) and **model confusion** due to tool-set size and vague "latest email" requests.
+
+## Proposed Changes
+
+### Core Memory System
+- **[MODIFY] [sqlite.ts](file:///c:/Users/dogki/source/repos/google-ai-studio-grav-bot/src/memory/sqlite.ts)**
+    - Refine [addMessage](file:///c:/Users/dogki/source/repos/google-ai-studio-grav-bot/src/memory/sqlite.ts#46-55) to ensure it correctly persists `tool_calls` and `tool_call_id`.
+    - Ensure [getRecentMessages](file:///c:/Users/dogki/source/repos/google-ai-studio-grav-bot/src/memory/sqlite.ts#56-66) returns the full message objects including technical metadata.
+
+### LLM Agent Loop
+- **[MODIFY] [llm.ts](file:///c:/Users/dogki/source/repos/google-ai-studio-grav-bot/src/llm.ts)**
+    - **History Loading**: Fix the filter logic (Lines 68-75) to include messages with `role: 'tool'` and assistant messages with `tool_calls`.
+    - **Persistence**: Explicitly save `tool_calls` and `tool` responses to SQLite inside the `iteration` loop.
+    - **SOP Prompting**: Add a "Procedures" section to the system prompt:
+        - *Find Latest Email*: Explicitly use `gmail_find_email(instructions="...", query="in:inbox")`.
+    - **Iteration Control**: Ensure that if a tool result is empty or indicates success, the assistant follows up automatically.
+
+### MCP Schema Refinement
+- **[MODIFY] [mcp.ts](file:///c:/Users/dogki/source/repos/google-ai-studio-grav-bot/src/mcp.ts)**
+    - Improve [simplifySchema](file:///c:/Users/dogki/source/repos/google-ai-studio-grav-bot/src/mcp.ts#9-47) to extract the `type` from `anyOf` blocks if a dominant type (like `string`) is present alongside `null` or `not: {}`, rather than just deleting the block.
+
+## Verification Plan
+
+### Automated Tests
+1.  **Memory Persistence Test**:
+    - Create `tests/test-history-metadata.ts`.
+    - Command: `npx tsx tests/test-history-metadata.ts`
+    - Logic: Add a user message, an assistant message with a mock `tool_call`, and a tool response message. Verify that [getRecentMessages](file:///c:/Users/dogki/source/repos/google-ai-studio-grav-bot/src/memory/sqlite.ts#56-66) returns all three with the correct IDs and roles.
+2.  **Schema Simplification Test**:
+    - Create `tests/test-schema-simplification.ts`.
+    - Command: `npx tsx tests/test-schema-simplification.ts`
+    - Logic: Pass a complex Zapier-style `anyOf` schema to [simplifySchema](file:///c:/Users/dogki/source/repos/google-ai-studio-grav-bot/src/mcp.ts#9-47) and verify it correctly preserves the `type: "string"` and `description`.
+
+### Manual Verification
+1.  **Load & Use Flow**:
+    - Ask IRIS: "whats on my calendar tomorrow?"
+    - Expected: It should load `zapier` (if not loaded), see the tools, and use `google_calendar_find_events`.
+2.  **Latest Email Flow**:
+    - Ask IRIS: "find my latest email"
+    - Expected: It should use `gmail_find_email` with `query: "in:inbox"` and `instructions: "find the latest email"`.

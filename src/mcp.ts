@@ -18,13 +18,34 @@ function simplifySchema(schema: any): any {
   const simplified = { ...schema };
 
   if (simplified.anyOf || simplified.allOf || simplified.oneOf) {
+    const logicalBlock = simplified.anyOf || simplified.allOf || simplified.oneOf;
+    
+    // Try to extract a dominant type (like string) from the logical block
+    let extractedType = null;
+    let extractedDescription = null;
+    
+    if (Array.isArray(logicalBlock)) {
+      for (const item of logicalBlock) {
+        if (item.type && item.type !== 'null') {
+          extractedType = item.type;
+          if (item.description) extractedDescription = item.description;
+          break; // Take the first non-null type
+        }
+      }
+    }
+
     delete simplified.anyOf;
     delete simplified.allOf;
     delete simplified.oneOf;
     
-    // If it's an array type, keep it as array, otherwise default to string
-    if (!simplified.type) {
+    if (extractedType) {
+      simplified.type = extractedType;
+    } else if (!simplified.type) {
       simplified.type = 'string';
+    }
+    
+    if (extractedDescription && !simplified.description) {
+      simplified.description = extractedDescription;
     }
   }
 
