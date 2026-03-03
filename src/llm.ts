@@ -2,11 +2,18 @@ import OpenAI from 'openai';
 import { addMessage, getRecentMessages } from './memory/sqlite.js';
 import { searchSemanticMemory, upsertSemanticMemory } from './memory/pinecone.js';
 import { getAllLoadedMCPTools, callMCPTool, getAvailableMCPServers, startMCPServer } from './mcp.js';
+import { determineRoute, loadSkills } from './router.js';
 
 // Initialize Ollama via OpenAI SDK
-const openai = new OpenAI({
+const localOpenai = new OpenAI({
   baseURL: process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
   apiKey: 'ollama', // OpenAI SDK requires an API key, but Ollama ignores it
+});
+
+// Initialize OpenRouter
+const cloudOpenai = new OpenAI({
+  baseURL: 'https://openrouter.ai/api/v1',
+  apiKey: process.env.OPENROUTER_API_KEY || 'sk-or-v1-missing',
 });
 
 // Define the get_current_time tool (OpenAI format)
@@ -39,34 +46,10 @@ export async function generateResponse(userMessage: string): Promise<string> {
   // 1. Save user message to exact memory (SQLite)
   addMessage('user', userMessage);
 
-  // 2. Retrieve semantic memories (Pinecone)
-  const semanticMemories = await searchSemanticMemory(userMessage);
-  const memoryContext = semanticMemories.length > 0 
-    ? `\n\nRelevant past memories:\n${semanticMemories.map(m => `- ${m}`).join('\n')}`
-    : '';
-
-  // 3. Build message history
-  const availableServers = getAvailableMCPServers();
-  const serverDescriptions = availableServers.map(s => `- ${s.name}: ${s.description} (Loaded: ${s.isLoaded})`).join('\n');
-
-  const systemPrompt = `You are IRIS (Intelligent Response and Insight System), a personal AI agent. You have access to tools. Use them if necessary.
-You can load additional tool servers if needed for the user's request.
-Available MCP Servers:
-${serverDescriptions}
-
-CRITICAL RULES FOR TOOLS:
-1. ZAPIER 'instructions' PARAMETER: Every Zapier tool REQUIRES an 'instructions' parameter. You MUST include it. Example: { "instructions": "Find events for tomorrow" }.
-2. CALENDAR ACCESS: You DO have access to Google Calendar via Zapier. Look for tools starting with 'zapier__google_calendar_'.
-3. CONVERSATIONAL RESPONSES: When a tool returns data (like emails or calendar events), read the data and answer the user naturally. DO NOT say "Here is the JSON" or list execution metadata. Act like a human assistant who just looked up the info.
-4. LATEST EMAIL: When asked to find the latest email, use the 'zapier__gmail_find_email' tool with query="in:inbox" and instructions="find the latest email".
-${memoryContext}`;
-  
-  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    { role: 'system', content: systemPrompt }
-  ];
-
-  // Load recent history (last 10 messages)
+  // 2. Load recent history (last 10 messages)
   const history = getRecentMessages(10);
+  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+  
   for (const msg of history) {
     if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
       const messageParam: any = { role: msg.role, content: msg.content };
@@ -76,34 +59,64 @@ ${memoryContext}`;
     }
   }
 
+  // 3. Determine Route
+  const route = await determineRoute(userMessage, history);
+  const skills = loadSkills();
+  const activeSkill = skills.find(s => s.name === route.skill);
+  
+  // 4. Load Required MCP Servers
+  let allowedTools: string[] | undefined = undefined;
+  if (activeSkill && activeSkill.toolsRequired.length > 0) {
+    allowedTools = activeSkill.toolsRequired;
+    // Extract server names from tool names (e.g., 'zapier__google_calendar_find_events' -> 'zapier')
+    const requiredServers = new Set(allowedTools.map(t => t.split('__')[0]));
+    for (const serverName of requiredServers) {
+      try {
+        await startMCPServer(serverName);
+      } catch (e) {
+        console.error(`[LLM] Failed to load required server ${serverName} for skill ${activeSkill.name}:`, e);
+      }
+    }
+  }
+
+  // 5. Retrieve semantic memories (Pinecone)
+  const semanticMemories = await searchSemanticMemory(userMessage);
+  const memoryContext = semanticMemories.length > 0 
+    ? `\n\nRelevant past memories:\n${semanticMemories.map(m => `- ${m}`).join('\n')}`
+    : '';
+
+  const systemPrompt = `You are IRIS (Intelligent Response and Insight System), a personal AI agent. You have access to tools. Use them if necessary.
+Active Skill: ${activeSkill ? activeSkill.name : 'general'}
+Description: ${activeSkill ? activeSkill.description : 'General conversation and tasks.'}
+
+CRITICAL RULES FOR TOOLS:
+1. ZAPIER 'instructions' PARAMETER: Every Zapier tool REQUIRES an 'instructions' parameter. You MUST include it. Example: { "instructions": "Find events for tomorrow" }.
+2. CONVERSATIONAL RESPONSES: When a tool returns data (like emails or calendar events), read the data and answer the user naturally. DO NOT say "Here is the JSON" or list execution metadata. Act like a human assistant who just looked up the info.
+3. LATEST EMAIL: When asked to find the latest email, use the 'zapier__gmail_find_email' tool with query="in:inbox" and instructions="find the latest email".
+${memoryContext}`;
+  
+  // Prepend system prompt to messages
+  messages.unshift({ role: 'system', content: systemPrompt });
+
   let iteration = 0;
   const MAX_ITERATIONS = 5;
+
+  const openaiClient = route.model === 'cloud' ? cloudOpenai : localOpenai;
+  const modelName = route.model === 'cloud' 
+    ? (process.env.OPENROUTER_MODEL || 'openrouter/google/gemini-2.0-flash-exp:free')
+    : (process.env.LOCAL_MODEL || 'qwen3:14b');
+
+  console.log(`[LLM] Executing with Model: ${modelName} (${route.model})`);
 
   while (iteration < MAX_ITERATIONS) {
     iteration++;
 
-    // Fetch dynamic MCP tools
-    const mcpTools = await getAllLoadedMCPTools();
+    // Fetch dynamic MCP tools (filtered by active skill)
+    const mcpTools = await getAllLoadedMCPTools(allowedTools);
     const allTools = [...tools, ...mcpTools];
 
-    // Add the load_mcp_server tool dynamically
-    allTools.push({
-      type: 'function',
-      function: {
-        name: 'load_mcp_server',
-        description: 'Load an MCP server to access its tools. Do this FIRST if the user asks for something related to an unloaded server.',
-        parameters: {
-          type: 'object',
-          properties: {
-            serverName: { type: 'string', description: 'The name of the server to load' }
-          },
-          required: ['serverName']
-        }
-      }
-    });
-
     const requestPayload: any = {
-      model: process.env.OLLAMA_MODEL || 'qwen3:14b',
+      model: modelName,
       messages: messages,
     };
     
@@ -112,12 +125,13 @@ ${memoryContext}`;
       requestPayload.tool_choice = 'auto';
     }
 
-    console.log(`[DEBUG] Iteration ${iteration}. Sending ${allTools.length} tools to Ollama.`);
-    // Call Ollama
-    const response = await openai.chat.completions.create(requestPayload);
+    console.log(`[DEBUG] Iteration ${iteration}. Sending ${allTools.length} tools to ${route.model} model.`);
+    
+    // Call LLM
+    const response = await openaiClient.chat.completions.create(requestPayload);
 
     const responseMessage = response.choices[0].message;
-    console.log(`[DEBUG] Ollama response: tool_calls=${responseMessage.tool_calls?.length || 0}, content=${!!responseMessage.content}`);
+    console.log(`[DEBUG] LLM response: tool_calls=${responseMessage.tool_calls?.length || 0}, content=${!!responseMessage.content}`);
     messages.push(responseMessage);
 
     // Handle Tool Calls
@@ -133,17 +147,6 @@ ${memoryContext}`;
           
           if (functionName === 'get_current_time') {
             toolResult = JSON.stringify({ time: getCurrentTime() });
-          } else if (functionName === 'load_mcp_server') {
-            const args = JSON.parse(toolCall.function.arguments || '{}');
-            try {
-              await startMCPServer(args.serverName);
-              toolResult = JSON.stringify({ 
-                success: true, 
-                message: `Server ${args.serverName} loaded successfully. Its tools are now available. You MUST now use these newly available tools to fulfill the user's original request. Do not stop here.` 
-              });
-            } catch (err: any) {
-              toolResult = JSON.stringify({ error: err.message });
-            }
           } else if (functionName.includes('__')) {
             // MCP Tool execution
             const [serverName, actualToolName] = functionName.split('__');

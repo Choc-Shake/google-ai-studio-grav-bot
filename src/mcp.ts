@@ -114,16 +114,23 @@ export function getAvailableMCPServers() {
   }));
 }
 
-export async function getAllLoadedMCPTools() {
+export async function getAllLoadedMCPTools(allowedTools?: string[]) {
   const allTools: any[] = [];
   for (const [serverName, client] of Object.entries(mcpClients)) {
     try {
       const response = await client.listTools();
       for (const tool of response.tools) {
+        const fullToolName = `${serverName}__${tool.name}`;
+        
+        // If allowedTools is provided, only include tools in that list
+        if (allowedTools && !allowedTools.includes(fullToolName)) {
+          continue;
+        }
+
         allTools.push({
           type: 'function',
           function: {
-            name: `${serverName}__${tool.name}`,
+            name: fullToolName,
             description: tool.description || `Tool ${tool.name} from ${serverName}`,
             parameters: simplifySchema(tool.inputSchema)
           }
