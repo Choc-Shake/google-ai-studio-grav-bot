@@ -11,4 +11,4 @@ Handles requests related to Gmail via Zapier MCP.
 - `zapier__gmail_create_draft_reply`
 
 **Model Preference:**
-`OPENROUTER_MODEL` (Heavy text generation for drafting emails)
+cloud

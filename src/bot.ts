@@ -1,6 +1,8 @@
 import { Bot, InputFile } from 'grammy';
 import { generateResponse } from './llm.js';
 import { transcribeAudio } from './voice/transcribe.js';
+import { TypingIndicator } from './ux/typing.js';
+import { commands, commandDescriptions } from './commands/index.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -31,6 +33,16 @@ export async function startBot() {
     await next();
   });
 
+  // Register slash commands
+  for (const [name, handler] of Object.entries(commands)) {
+    bot.command(name, handler);
+  }
+
+  // Set command menu in Telegram for autocomplete
+  bot.api.setMyCommands(commandDescriptions).catch(err => {
+    console.error('Failed to set command menu:', err);
+  });
+
   bot.command('start', (ctx) => {
     ctx.reply('IRIS initialized. Awaiting input.');
   });
@@ -38,13 +50,16 @@ export async function startBot() {
   bot.on('message:text', async (ctx) => {
     const userMessage = ctx.message.text;
     
-    // Send a typing indicator
-    await ctx.replyWithChatAction('typing');
+    // Start continuous typing indicator
+    const typing = new TypingIndicator(ctx);
+    typing.start();
 
     try {
       const response = await generateResponse(userMessage);
+      typing.stop();
       await ctx.reply(response);
     } catch (error) {
+      typing.stop();
       console.error('Error generating response:', error);
       await ctx.reply('An error occurred while processing your request.');
     }
@@ -72,9 +87,11 @@ export async function startBot() {
       
       await ctx.reply(`🎤 *You:* ${text}`, { parse_mode: 'Markdown' });
       
-      // Generate Response
-      await ctx.replyWithChatAction('typing');
+      // Start continuous typing indicator for LLM response
+      const typing = new TypingIndicator(ctx);
+      typing.start();
       const replyText = await generateResponse(text);
+      typing.stop();
       
       await ctx.reply(replyText);
       
@@ -85,5 +102,13 @@ export async function startBot() {
   });
 
   console.log('Starting IRIS (Long Polling)...');
+  
+  // Send welcome message
+  if (ALLOWED_USER_ID) {
+    bot.api.sendMessage(ALLOWED_USER_ID, `✨ *IRIS ONLINE* ✨\n\nHello Ishaan, how can I help?`, { parse_mode: 'Markdown' }).catch(err => {
+      console.error('Failed to send welcome message:', err);
+    });
+  }
+
   await bot.start();
 }

@@ -3,7 +3,8 @@
     "notebooklm": {
       "command": "C:\\Users\\dogki\\AppData\\Roaming\\Python\\Python314\\Scripts\\notebooklm-mcp.exe",
       "args": [],
-      "disabled": true
+      "description": "Access NotebookLM for information retrieval and document analysis.",
+      "disabled": false
     },
     "pinecone": {
       "command": "npx",
@@ -14,6 +15,7 @@
       "env": {
         "PINECONE_API_KEY": "pcsk_4uZoq3_HzPnCfc2Tbf88seXJPJwsBLFJkjdKwANZMUPSJd2LJEX4bpLZgbFfDgY7fZD1AM"
       },
+      "description": "Search semantic memory and long-term storage of conversations.",
       "disabled": true
     },
     "zapier": {
@@ -21,9 +23,10 @@
       "args": [
         "-y",
         "mcp-remote",
-        "https://mcp.zapier.com/api/v1/connect?token=MmU2NWY2ODUtZjU5Zi00YzAyLWJjMTItNDkxZmQ3YzMzZWUzOnU0bHZ3WUFZWTdMbTNnbTIxNnFXSUNtakloaFVwK3FDYXdnZ3owUEc4d3c9"
+        "https://mcp.zapier.com/api/v1/connect?token=MmU2NWY2ODUtZjU5Zi00YzAyLWJjMTItNDkxZmQ3YzMzZWUzOm14bnNBbWpQai9zOXJNTFZjUU5ERENpSWRhdE9OSEpwOUh5ays4QlZDV0U9"
       ],
-      "disabled": true
+      "description": "Access Google Calendar,  Gmail, and other Zapier-connected services for scheduling and communication.",
+      "disabled": false
     },
     "context7": {
       "command": "npx",
@@ -31,7 +34,8 @@
         "-y",
         "@upstash/context7-mcp@latest"
       ],
-      "disabled": true
+      "description": "Retrieve up-to-date documentation and code examples from technical resources.",
+      "disabled": false
     }
   }
 }

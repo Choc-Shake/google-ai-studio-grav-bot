@@ -11,4 +11,4 @@ Handles requests related to Google Calendar via Zapier MCP.
 - `zapier__google_calendar_delete_event`
 
 **Model Preference:**
-`LOCAL_MODEL` (Simple tool execution)
+local

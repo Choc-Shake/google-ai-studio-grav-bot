@@ -95,3 +95,14 @@ export function searchMessages(query: string, limit: number = 5): any[] {
   `);
   return stmt.all(query, limit);
 }
+
+export function clearMessages() {
+  db.exec('DELETE FROM messages');
+  // Rebuild FTS index after clearing
+  db.exec("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')");
+}
+
+export function getMessageCount(): number {
+  const row = db.prepare('SELECT COUNT(*) as count FROM messages').get() as any;
+  return row?.count || 0;
+}

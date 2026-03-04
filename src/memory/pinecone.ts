@@ -11,11 +11,20 @@ const openai = new OpenAI({
 });
 
 async function getEmbedding(text: string): Promise<number[]> {
-  const response = await openai.embeddings.create({
-    model: process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text',
-    input: text,
-  });
-  return response.data[0].embedding;
+  try {
+    const response = await openai.embeddings.create({
+      model: process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text',
+      input: text,
+    });
+    return response.data[0].embedding;
+  } catch (e: any) {
+    if (e.message?.includes('fetch failed') || e.code === 'ECONNREFUSED') {
+      console.warn('[Embedding] Local embedding service (Ollama) is offline or unreachable. Skipping semantic memory lookup/save.');
+    } else {
+      console.error('[Embedding] Error getting embedding:', e.message);
+    }
+    return [];
+  }
 }
 
 export async function upsertSemanticMemory(text: string, metadata: any = {}) {
@@ -52,6 +61,9 @@ export async function searchSemanticMemory(query: string, topK: number = 3): Pro
   try {
     const index = pc.index(indexName);
     const queryEmbedding = await getEmbedding(query);
+    if (!queryEmbedding || queryEmbedding.length === 0) {
+      return [];
+    }
     
     const results = await index.query({
       vector: queryEmbedding,
